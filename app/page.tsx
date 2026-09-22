@@ -267,7 +267,7 @@ function PageIntro({ eyebrow, title, text, action }: { eyebrow: string; title: s
 function Dashboard({ plannerItems, progress, completedBlocks, toggleBlock, setView, setSelectedId, dialogOpen, setDialogOpen, saving, addEvent }: { plannerItems: PlannerItem[]; progress: number; completedBlocks: string[]; toggleBlock: (key: string, checked: boolean) => void; setView: (view: View) => void; setSelectedId: (id: string) => void; dialogOpen: boolean; setDialogOpen: (open: boolean) => void; saving: boolean; addEvent: (event: FormEvent<HTMLFormElement>) => void }) {
   const assessments = plannerItems.filter((item) => item.itemType === "Prova" || item.itemType === "Trabalho").sort((a, b) => a.date.localeCompare(b.date));
   return <>
-    <PageIntro eyebrow="Segunda-feira • Semana acadêmica" title="Olá, Aline. Um passo de cada vez." text="Sua rotina já está dividida em blocos curtos, com revisão das três disciplinas e prática de questões." action={<AssessmentDialog open={dialogOpen} setOpen={setDialogOpen} saving={saving} onSubmit={addEvent} />} />
+    <PageIntro eyebrow={`${new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Cuiaba" }).format(new Date())} • Semana acadêmica`} title="Olá, Aline. Um passo de cada vez." text="Sua rotina já está dividida em blocos curtos, com revisão das três disciplinas e prática de questões." action={<AssessmentDialog open={dialogOpen} setOpen={setDialogOpen} saving={saving} onSubmit={addEvent} />} />
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <Metric icon={<Clock3 />} label="Estudo em dias úteis" value="1h30" detail="2 blocos de 45 min" tone="green" />
       <Metric icon={<CalendarDays />} label="Fim de semana" value="2h" detail="sábado e domingo" tone="blue" />
