@@ -266,8 +266,39 @@ function PageIntro({ eyebrow, title, text, action }: { eyebrow: string; title: s
 
 function Dashboard({ plannerItems, progress, completedBlocks, toggleBlock, setView, setSelectedId, dialogOpen, setDialogOpen, saving, addEvent }: { plannerItems: PlannerItem[]; progress: number; completedBlocks: string[]; toggleBlock: (key: string, checked: boolean) => void; setView: (view: View) => void; setSelectedId: (id: string) => void; dialogOpen: boolean; setDialogOpen: (open: boolean) => void; saving: boolean; addEvent: (event: FormEvent<HTMLFormElement>) => void }) {
   const assessments = plannerItems.filter((item) => item.itemType === "Prova" || item.itemType === "Trabalho").sort((a, b) => a.date.localeCompare(b.date));
+  const [todayIndex, setTodayIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const weekday = new Intl.DateTimeFormat("pt-BR", {
+      weekday: "long",
+      timeZone: "America/Cuiaba",
+    }).format(new Date()).toLocaleLowerCase("pt-BR");
+
+    const weekdayIndexes: Record<string, number> = {
+      "segunda-feira": 0,
+      "terça-feira": 1,
+      "quarta-feira": 2,
+      "quinta-feira": 3,
+      "sexta-feira": 4,
+      sábado: 5,
+      domingo: 6,
+    };
+
+    setTodayIndex(weekdayIndexes[weekday] ?? 0);
+  }, []);
+
+  const todayPlan = todayIndex === null ? null : studyPlan[todayIndex];
+  const isWeekend = todayIndex !== null && todayIndex >= 5;
+  const firstTime = isWeekend ? "09:00–10:00" : "13:30–14:15";
+  const secondTime = isWeekend ? "10:00–11:00" : "16:10–16:55";
+  const studyColor = (title: string) => title.toLocaleLowerCase("pt-BR").includes("mulher")
+    ? "#d04f7b"
+    : title.toLocaleLowerCase("pt-BR").includes("uti")
+      ? "#1976d2"
+      : "#388e3c";
+
   return <>
-    <PageIntro eyebrow={`${new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Cuiaba" }).format(new Date())} • Semana acadêmica`} title="Olá, Aline. Um passo de cada vez." text="Sua rotina já está dividida em blocos curtos, com revisão das três disciplinas e prática de questões." action={<AssessmentDialog open={dialogOpen} setOpen={setDialogOpen} saving={saving} onSubmit={addEvent} />} />
+    <PageIntro eyebrow={`${todayPlan?.day ?? "Hoje"} • Semana acadêmica`} title="Olá, Aline. Um passo de cada vez." text="Sua rotina já está dividida em blocos curtos, com revisão das três disciplinas e prática de questões." action={<AssessmentDialog open={dialogOpen} setOpen={setDialogOpen} saving={saving} onSubmit={addEvent} />} />
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <Metric icon={<Clock3 />} label="Estudo em dias úteis" value="1h30" detail="2 blocos de 45 min" tone="green" />
       <Metric icon={<CalendarDays />} label="Fim de semana" value="2h" detail="sábado e domingo" tone="blue" />
@@ -279,9 +310,11 @@ function Dashboard({ plannerItems, progress, completedBlocks, toggleBlock, setVi
       <div className="rounded-2xl border border-black/7 bg-white p-5 shadow-sm md:p-6">
         <div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-black">Plano de hoje</h2><p className="text-sm text-slate-500">Blocos definidos para manter constância</p></div><Button variant="ghost" onClick={() => setView("rotina")} className="text-[#2e7d32]">Ver semana <ChevronRight /></Button></div>
         <div className="space-y-3">
-          <StudyBlock blockKey="segunda-1" time="13:30–14:15" title="Centro cirúrgico" subtitle="Ler a aula-base e resumir as 3 fases perioperatórias" checked={completedBlocks.includes("segunda-1")} onToggle={toggleBlock} color="#388e3c" />
-          <StudyBlock blockKey="segunda-2" time="16:10–16:55" title="Saúde da mulher" subtitle="Revisar integralidade e sinais de alerta na gestação" checked={completedBlocks.includes("segunda-2")} onToggle={toggleBlock} color="#d04f7b" />
-          <div className="flex items-center gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><div className="grid size-11 place-items-center rounded-xl bg-[#183c2f] text-white"><GraduationCap /></div><div><p className="font-bold">Aula presencial: Centro cirúrgico</p><p className="text-sm text-slate-500">Prof.ª Carla • 1º horário • 19:00–20:20</p></div></div>
+          {todayPlan ? <>
+            <StudyBlock blockKey={`${todayPlan.day}-1`} time={firstTime} title={todayPlan.first} subtitle={isWeekend ? "Atividade planejada para o fim de semana" : "Primeiro bloco de estudo do dia"} checked={completedBlocks.includes(`${todayPlan.day}-1`)} onToggle={toggleBlock} color={studyColor(todayPlan.first)} />
+            <StudyBlock blockKey={`${todayPlan.day}-2`} time={secondTime} title={todayPlan.second} subtitle={isWeekend ? "Segundo bloco de revisão e organização" : "Segundo bloco de estudo do dia"} checked={completedBlocks.includes(`${todayPlan.day}-2`)} onToggle={toggleBlock} color={studyColor(todayPlan.second)} />
+            <div className="flex items-center gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><div className="grid size-11 place-items-center rounded-xl bg-[#183c2f] text-white"><GraduationCap /></div><div><p className="font-bold">{isWeekend ? "Atividade do dia" : "Aula/atividade acadêmica"}</p><p className="text-sm text-slate-500">{todayPlan.className}</p></div></div>
+          </> : <div className="rounded-xl bg-slate-50 p-5 text-sm font-semibold text-slate-500">Carregando o plano de hoje...</div>}
         </div>
       </div>
 
@@ -451,3 +484,4 @@ function PlanCell({ blockKey, time, title, checked, onToggle }: { blockKey: stri
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${date}T12:00:00`)).replace(".", "");
 }
+
