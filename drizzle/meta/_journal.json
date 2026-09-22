@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790008135644,
+      "tag": "0000_bitter_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790008374157,
+      "tag": "0001_amazing_selene",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790015093669,
+      "tag": "0002_cultured_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790015379833,
+      "tag": "0003_supreme_the_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790015558827,
+      "tag": "0004_adorable_omega_red",
+      "breakpoints": true
+    }
+  ]
+}

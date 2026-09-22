@@ -1,0 +1,1 @@
+ALTER TABLE `quiz_progress` ADD `last_answer` integer DEFAULT 0 NOT NULL;
