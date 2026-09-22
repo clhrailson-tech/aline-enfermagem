@@ -37,6 +37,58 @@ import { disciplines, studyPlan, type Discipline, type Question } from "./course
 type View = "inicio" | "rotina" | "aulas" | "questoes";
 type PlannerItem = { id: number; title: string; subject: string; itemType: string; date: string; startTime: string; completed: boolean };
 type QuizProgressItem = { questionId: string; disciplineId: string; lastCorrect: boolean; lastAnswer: number; timesAnswered: number; correctCount: number; firstAnsweredAt: string; lastAnsweredAt: string; nextReviewAt: string };
+type AuthUser = { id: string; email?: string; app_metadata?: { role?: string } };
+type AuthSession = { access_token: string; refresh_token: string; expires_at: number; user: AuthUser };
+type AuthTokenResponse = { access_token: string; refresh_token: string; expires_in?: number; expires_at?: number; user: AuthUser };
+
+const SUPABASE_URL = "https://pcwknkrgtsmcivyetfvx.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_OyGagYkljCbDNYP1W_YE6g_D70t7_Fr";
+const AUTH_STORAGE_KEY = "aline-auth-session";
+const PIN_IDENTITIES = ["aline@aline-enfermagem.app", "admin@aline-enfermagem.app"];
+
+async function authRequest<T = Record<string, unknown>>(path: string, body: Record<string, string>, accessToken?: string): Promise<T> {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const result: unknown = await response.json().catch(() => ({}));
+  const message = typeof result === "object" && result !== null && "msg" in result && typeof (result as { msg?: unknown }).msg === "string"
+    ? (result as { msg: string }).msg
+    : "Não foi possível entrar.";
+  if (!response.ok) throw new Error(message);
+  return result as T;
+}
+
+function normalizeSession(result: AuthTokenResponse): AuthSession {
+  return {
+    access_token: result.access_token,
+    refresh_token: result.refresh_token,
+    expires_at: result.expires_at ?? Math.floor(Date.now() / 1000) + (result.expires_in ?? 3600),
+    user: result.user,
+  };
+}
+
+async function signInWithPin(pin: string) {
+  for (const email of PIN_IDENTITIES) {
+    try {
+      const result = await authRequest<AuthTokenResponse>("token?grant_type=password", { email, password: pin });
+      return normalizeSession(result);
+    } catch {
+      // O mesmo PIN é testado nos dois acessos autorizados.
+    }
+  }
+  throw new Error("PIN incorreto. Confira os números e tente novamente.");
+}
+
+async function refreshAuthSession(refreshToken: string) {
+  const result = await authRequest<AuthTokenResponse>("token?grant_type=refresh_token", { refresh_token: refreshToken });
+  return normalizeSession(result);
+}
 
 const storageKeys = {
   planner: "aline-planner-items",
@@ -82,8 +134,35 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const selected = disciplines.find((item) => item.id === selectedId) ?? disciplines[0];
   const progress = Math.round((completedBlocks.length / 14) * 100);
+
+  useEffect(() => {
+    let active = true;
+    async function restoreSession() {
+      const stored = readStored<AuthSession | null>(AUTH_STORAGE_KEY, null);
+      if (!stored) {
+        if (active) setAuthReady(true);
+        return;
+      }
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const session = stored.expires_at > now + 60 ? stored : await refreshAuthSession(stored.refresh_token);
+        if (active) {
+          setAuthSession(session);
+          saveStored(AUTH_STORAGE_KEY, session);
+        }
+      } catch {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      } finally {
+        if (active) setAuthReady(true);
+      }
+    }
+    void restoreSession();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     setPlannerItems(readStored<PlannerItem[]>(storageKeys.planner, []));
@@ -185,6 +264,26 @@ export default function Home() {
     }
   }
 
+  async function handleLogin(pin: string) {
+    const session = await signInWithPin(pin);
+    setAuthSession(session);
+    saveStored(AUTH_STORAGE_KEY, session);
+  }
+
+  async function handleLogout() {
+    const token = authSession?.access_token;
+    setAuthSession(null);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    if (token) await authRequest("logout", {}, token).catch(() => undefined);
+  }
+
+  if (!authReady) return <AuthLoading />;
+  if (!authSession) return <LoginScreen onLogin={handleLogin} />;
+
+  const isAdmin = authSession.user.app_metadata?.role === "admin";
+  const accountName = isAdmin ? "Administrador" : "Aline Organek";
+  const accountLabel = isAdmin ? "Acesso administrativo" : "6º período";
+
   return (
     <main className="min-h-screen bg-[#f3f5f4] text-[#263238]">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[270px] flex-col bg-[#183c2f] px-5 py-6 text-white lg:flex">
@@ -197,15 +296,16 @@ export default function Home() {
           ))}
         </nav>
         <div className="mt-auto rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
-          <div className="mb-3 flex items-center gap-3"><ProfileAvatar photoUrl={photoUrl} className="size-10" /><div><p className="text-sm font-bold">Aline Organek</p><p className="text-xs text-white/55">6º período</p></div></div>
+          <div className="mb-3 flex items-center gap-3"><ProfileAvatar photoUrl={photoUrl} className="size-10" /><div><p className="text-sm font-bold">{accountName}</p><p className="text-xs text-white/55">{accountLabel}</p></div></div>
           <p className="text-xs leading-relaxed text-white/60">Faculdade FASIPE • Sorriso–MT</p>
+          <button onClick={handleLogout} className="mt-4 w-full rounded-xl border border-white/15 px-3 py-2 text-xs font-bold text-white/75 transition hover:bg-white/10 hover:text-white">Sair</button>
         </div>
       </aside>
 
       <div className="lg:pl-[270px]">
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-black/5 bg-white/92 px-4 backdrop-blur md:px-8">
           <div className="flex items-center gap-3"><Button variant="ghost" size="icon" className="lg:hidden"><Menu /></Button><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#388e3c]">FASIPE Sorriso</p><p className="font-bold">Enfermagem • 6º período</p></div></div>
-          <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-semibold">Aline Organek</p><p className="text-xs text-slate-500">{uploadingPhoto ? "Salvando foto..." : "Toque na foto para alterar"}</p></div><ProfileAvatar photoUrl={photoUrl} className="size-11" uploadable onUpload={uploadPhoto} /></div>
+          <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-semibold">{accountName}</p><p className="text-xs text-slate-500">{isAdmin ? accountLabel : uploadingPhoto ? "Salvando foto..." : "Toque na foto para alterar"}</p></div><ProfileAvatar photoUrl={photoUrl} className="size-11" uploadable={!isAdmin} onUpload={uploadPhoto} /><Button variant="outline" size="sm" onClick={handleLogout}>Sair</Button></div>
         </header>
 
         <div className="mx-auto max-w-[1450px] p-4 pb-28 md:p-8">
@@ -220,6 +320,56 @@ export default function Home() {
       <nav className="fixed inset-x-3 bottom-3 z-50 flex items-center justify-around rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl backdrop-blur lg:hidden" aria-label="Navegação móvel">
         {navItems.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-[11px] ${view === item.id ? "font-bold text-[#2e7d32]" : "text-slate-500"}`}>{item.icon}<span>{item.label.split(" ")[0]}</span></button>)}
       </nav>
+    </main>
+  );
+}
+
+function AuthLoading() {
+  return <main className="grid min-h-screen place-items-center bg-[#f3f5f4] text-[#255f3b]"><div className="text-center"><Stethoscope className="mx-auto mb-3 size-10 animate-pulse" /><p className="font-bold">Abrindo AlineEnf...</p></div></main>;
+}
+
+function LoginScreen({ onLogin }: { onLogin: (pin: string) => Promise<void> }) {
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!/^\d{6,12}$/.test(pin)) {
+      setError("Digite o PIN numérico com pelo menos 6 números.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await onLogin(pin);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Não foi possível entrar.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#edf5ef] px-4 py-10 text-[#263238]">
+      <div className="absolute -left-24 -top-24 size-80 rounded-full bg-[#4caf50]/15 blur-3xl" />
+      <div className="absolute -bottom-28 -right-20 size-96 rounded-full bg-[#ef6c8f]/10 blur-3xl" />
+      <section className="relative w-full max-w-md rounded-[2rem] border border-white/70 bg-white/95 p-7 shadow-2xl shadow-[#183c2f]/10 md:p-9">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="relative mb-4 grid size-16 place-items-center rounded-2xl bg-[#388e3c] text-white shadow-lg shadow-[#388e3c]/25"><Stethoscope className="size-9" /><span className="absolute -right-1 -top-1 grid size-6 place-items-center rounded-full bg-white text-base font-black text-[#388e3c] shadow">+</span></div>
+          <h1 className="text-3xl font-black tracking-tight">Aline<span className="text-[#4caf50]">Enf</span></h1>
+          <p className="mt-2 text-sm text-slate-500">Organização acadêmica de Enfermagem</p>
+        </div>
+        <form onSubmit={submit} className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="pin" className="text-sm font-bold">Digite seu PIN</Label>
+            <Input id="pin" type="password" inputMode="numeric" autoComplete="current-password" placeholder="••••••" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 12))} className="h-14 rounded-xl text-center text-xl font-black tracking-[0.45em]" autoFocus />
+          </div>
+          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+          <Button type="submit" disabled={loading} className="h-13 w-full rounded-xl bg-[#388e3c] text-base font-bold hover:bg-[#2e7d32]">{loading ? "Entrando..." : "Entrar"}</Button>
+        </form>
+        <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400"><ShieldCheck className="size-4" /><span>Seu PIN não fica salvo neste aparelho.</span></div>
+      </section>
     </main>
   );
 }
@@ -484,4 +634,3 @@ function PlanCell({ blockKey, time, title, checked, onToggle }: { blockKey: stri
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${date}T12:00:00`)).replace(".", "");
 }
-
