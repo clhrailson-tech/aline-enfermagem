@@ -336,8 +336,8 @@ function LoginScreen({ onLogin }: { onLogin: (pin: string) => Promise<void> }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!/^\d{6,12}$/.test(pin)) {
-      setError("Digite o PIN numérico com pelo menos 6 números.");
+    if (pin.length < 6) {
+      setError("Digite o PIN com pelo menos 6 caracteres.");
       return;
     }
     setLoading(true);
@@ -363,7 +363,7 @@ function LoginScreen({ onLogin }: { onLogin: (pin: string) => Promise<void> }) {
         <form onSubmit={submit} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="pin" className="text-sm font-bold">Digite seu PIN</Label>
-            <Input id="pin" type="password" inputMode="numeric" autoComplete="current-password" placeholder="••••••" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 12))} className="h-14 rounded-xl text-center text-xl font-black tracking-[0.45em]" autoFocus />
+            <Input id="pin" type="password" autoComplete="current-password" placeholder="Digite letras e números" value={pin} onChange={(event) => setPin(event.target.value.slice(0, 72))} className="h-14 rounded-xl text-center text-lg font-black tracking-[0.12em]" autoFocus />
           </div>
           {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
           <Button type="submit" disabled={loading} className="h-13 w-full rounded-xl bg-[#388e3c] text-base font-bold hover:bg-[#2e7d32]">{loading ? "Entrando..." : "Entrar"}</Button>
